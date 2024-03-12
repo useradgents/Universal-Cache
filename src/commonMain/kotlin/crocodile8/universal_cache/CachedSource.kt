@@ -17,12 +17,13 @@ import kotlinx.coroutines.sync.withLock
 /**
  * Caching layer that loads a result from the given source or uses cache.
  */
-class CachedSource<P : Any, T : Any>(
+open class CachedSource<P : Any, T : Any>(
     source: suspend (params: P) -> T,
     private val cache: Cache<P, T> = MemoryCache(1),
     private val timeProvider: TimeProvider = SystemTimeProvider,
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
+
 
     private val _updates = MutableSharedFlow<Pair<P, CachedSourceResult<T>>>()
     /**
@@ -42,6 +43,7 @@ class CachedSource<P : Any, T : Any>(
 
     private val requester = Requester(source)
     private val cacheLock = Mutex()
+    private var current : T? = null
 
     /**
      * Clears underlying cache.
@@ -70,7 +72,7 @@ class CachedSource<P : Any, T : Any>(
      *
      * @return Flow that emits 1 (or 2 in case of [FromCache.CACHED_THEN_LOAD]) elements or exception.
      */
-    suspend fun get(
+    fun get(
         params: P,
         fromCache: FromCache,
         shareOngoingRequest: Boolean = true,
@@ -83,7 +85,7 @@ class CachedSource<P : Any, T : Any>(
     /**
      * See [get]
      */
-    suspend fun getRaw(
+     fun getRaw(
         params: P,
         fromCache: FromCache,
         shareOngoingRequest: Boolean = true,
@@ -164,6 +166,7 @@ class CachedSource<P : Any, T : Any>(
                 Logger.log { "getFromSource: $params -> $it" }
                 putToCache(it.value, params, additionalKey, time = it.originTimeStamp ?: timeProvider.get())
                 _updates.emit(params to it)
+                current = it.value
             }
             .catch {
                 _errors.emit(params to it)

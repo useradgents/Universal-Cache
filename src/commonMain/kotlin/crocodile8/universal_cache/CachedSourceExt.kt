@@ -9,7 +9,8 @@ import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.retry
 import kotlinx.coroutines.flow.take
 
-suspend fun <P : Any, T : Any> CachedSource<P, T>.getOrRequest(
+
+fun <P : Any, T : Any> CachedSource<P, T>.getOrRequest(
     params: P,
     fromCachePredicate: (cached: CachedSourceResult<T>) -> Boolean,
 ): Flow<T> =
@@ -27,7 +28,7 @@ suspend fun <P : Any, T : Any> CachedSource<P, T>.getOrRequest(
             }
     }
 
-suspend fun <P : Any, T : Any> CachedSource<P, T>.observeAndRequest(
+fun <P : Any, T : Any> CachedSource<P, T>.observeAndRequest(
     params: P,
     requestRetryCount: Long = 2,
 ): Flow<T> =

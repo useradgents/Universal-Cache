@@ -22,6 +22,20 @@
         app:layout_constraintTop_toTopOf="parent" />
 
     <TextView
+        android:id="@+id/textView_1_bis"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:layout_marginVertical="8dp"
+        android:textColor="@color/white"
+        android:background="@color/color_1"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="4dp"
+        android:text="Hello World!"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/textView_1" />
+
+    <TextView
         android:id="@+id/textView_2"
         android:layout_width="match_parent"
         android:layout_height="48dp"
@@ -33,7 +47,7 @@
         android:text="Hello World!"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/textView_1" />
+        app:layout_constraintTop_toBottomOf="@id/textView_1_bis" />
 
     <Button
         android:id="@+id/download_1"

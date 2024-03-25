@@ -8,7 +8,6 @@ import android.widget.Button
 import android.widget.TextView
 import androidx.lifecycle.lifecycleScope
 import crocodile8.universal_cache.CachedSource
-import crocodile8.universal_cache.CachedSourceNoParams
 import crocodile8.universal_cache.FromCache
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
@@ -31,6 +30,7 @@ class MainActivity : AppCompatActivity() {
     private val source1 = CachedSource<String, Int>(source = { params -> longRunningTask() })
 
     private lateinit var textView1: TextView
+    private lateinit var textView1Bis: TextView
     private lateinit var textView2: TextView
     private lateinit var button1: Button
     private lateinit var button2: Button
@@ -40,6 +40,12 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         textView1 = findViewById(R.id.textView_1)
+        textView1Bis = findViewById(R.id.textView_1_bis)
+        lifecycleScope.launch {
+            source1.get("1", FromCache.IF_HAVE).collect {
+                textView1Bis.text = "should be always == first textView : $it"
+            }
+        }
 
         textView2 = findViewById(R.id.textView_2)
         button1 = findViewById(R.id.download_1)
@@ -63,6 +69,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
+
 
     private fun refresh2() {
         lifecycleScope.launch {

@@ -8,9 +8,13 @@ import crocodile8.universal_cache.time.SystemTimeProvider
 import crocodile8.universal_cache.time.TimeProvider
 import crocodile8.universal_cache.utils.Logger
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -26,6 +30,7 @@ open class CachedSource<P : Any, T : Any>(
 
 
     private val _updates = MutableSharedFlow<Pair<P, CachedSourceResult<T>>>()
+
     /**
      * Flow of every update from the source.
      * Can be used to observe all future updates.
@@ -34,6 +39,7 @@ open class CachedSource<P : Any, T : Any>(
     val updates: SharedFlow<Pair<P, CachedSourceResult<T>>> = _updates
 
     private val _errors = MutableSharedFlow<Pair<P, Throwable>>()
+
     /**
      * Flow of every exception from the source.
      * Can be used to observe all future exceptions.
@@ -43,7 +49,7 @@ open class CachedSource<P : Any, T : Any>(
 
     private val requester = Requester(source)
     private val cacheLock = Mutex()
-    private var current : T? = null
+    private var current: T? = null
 
     /**
      * Clears underlying cache.
@@ -52,6 +58,28 @@ open class CachedSource<P : Any, T : Any>(
         cacheLock.withLock {
             cache.clear()
         }
+    }
+
+    private val cachedValues: HashMap<P, MutableSharedFlow<T>> = HashMap()
+
+    suspend fun getAsync(
+        params: P,
+        fromCache: FromCache,
+        shareOngoingRequest: Boolean = true,
+        maxAge: Long? = null,
+        additionalKey: Any? = null
+    ): SharedFlow<T> {
+        if (cachedValues[params] == null) {
+            cachedValues[params] = MutableSharedFlow(
+                replay = 1,
+                onBufferOverflow = BufferOverflow.DROP_OLDEST
+            )
+        }
+
+        getRaw(params, fromCache, shareOngoingRequest, maxAge, additionalKey).collect {
+            cachedValues[params]!!.emit(it.value)
+        }
+        return cachedValues[params]!!
     }
 
     /**
@@ -85,7 +113,7 @@ open class CachedSource<P : Any, T : Any>(
     /**
      * See [get]
      */
-     fun getRaw(
+    fun getRaw(
         params: P,
         fromCache: FromCache,
         shareOngoingRequest: Boolean = true,
@@ -104,7 +132,13 @@ open class CachedSource<P : Any, T : Any>(
                         .catch {
                             val cached = getFromCache(params, additionalKey, maxAge)
                             if (cached != null) {
-                                emit(CachedSourceResult(cached.value, fromCache = true, originTimeStamp = cached.time))
+                                emit(
+                                    CachedSourceResult(
+                                        cached.value,
+                                        fromCache = true,
+                                        originTimeStamp = cached.time
+                                    )
+                                )
                             } else {
                                 throw it
                             }
@@ -115,7 +149,15 @@ open class CachedSource<P : Any, T : Any>(
                     val cached = getFromCache(params, additionalKey, maxAge)
                     Logger.log { "get IF_HAVE: $params / cached: $cached" }
                     if (cached != null) {
-                        flow { emit(CachedSourceResult(cached.value, fromCache = true, originTimeStamp = cached.time)) }
+                        flow {
+                            emit(
+                                CachedSourceResult(
+                                    cached.value,
+                                    fromCache = true,
+                                    originTimeStamp = cached.time
+                                )
+                            )
+                        }
                     } else {
                         getFromSource(params, additionalKey, shareOngoing = shareOngoingRequest)
                     }
@@ -124,7 +166,15 @@ open class CachedSource<P : Any, T : Any>(
                 FromCache.ONLY -> {
                     val cached = getFromCache(params, additionalKey, maxAge)
                     if (cached != null) {
-                        flow { emit(CachedSourceResult(cached.value, fromCache = true, originTimeStamp = cached.time)) }
+                        flow {
+                            emit(
+                                CachedSourceResult(
+                                    cached.value,
+                                    fromCache = true,
+                                    originTimeStamp = cached.time
+                                )
+                            )
+                        }
                     } else {
                         flow { throw NullPointerException("Cache is empty") }
                     }
@@ -135,7 +185,15 @@ open class CachedSource<P : Any, T : Any>(
                     Logger.log { "get FROM_CACHE_THEN_LOAD: $params / cached: $cached" }
                     flow {
                         if (cached != null) {
-                            emitAll(flowOf(CachedSourceResult(cached.value, fromCache = true, originTimeStamp = cached.time)))
+                            emitAll(
+                                flowOf(
+                                    CachedSourceResult(
+                                        cached.value,
+                                        fromCache = true,
+                                        originTimeStamp = cached.time
+                                    )
+                                )
+                            )
                         }
                         emitAll(
                             getFromSource(params, additionalKey, shareOngoing = shareOngoingRequest)
@@ -164,7 +222,12 @@ open class CachedSource<P : Any, T : Any>(
             .map { CachedSourceResult(it, fromCache = false, originTimeStamp = timeProvider.get()) }
             .onEach {
                 Logger.log { "getFromSource: $params -> $it" }
-                putToCache(it.value, params, additionalKey, time = it.originTimeStamp ?: timeProvider.get())
+                putToCache(
+                    it.value,
+                    params,
+                    additionalKey,
+                    time = it.originTimeStamp ?: timeProvider.get()
+                )
                 _updates.emit(params to it)
                 current = it.value
             }
@@ -173,7 +236,11 @@ open class CachedSource<P : Any, T : Any>(
                 throw it
             }
 
-    private suspend fun getFromCache(params: P, additionalKey: Any?, maxAge: Long?): CachedData<T>? {
+    private suspend fun getFromCache(
+        params: P,
+        additionalKey: Any?,
+        maxAge: Long?
+    ): CachedData<T>? {
         cacheLock.withLock {
             val cachedData = cache.get(params, additionalKey)
             if (cachedData != null && cachedData.isOkByMaxAge(maxAge)) {
